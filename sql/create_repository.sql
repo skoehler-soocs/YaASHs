@@ -1422,7 +1422,8 @@ BEGIN
     EXECUTE IMMEDIATE l_sqltext;
     l_sqltext := 'CREATE SYNONYM yaashsr.v$active_session_history FOR yaashsr.active_session_history_all';
     EXECUTE IMMEDIATE l_sqltext;
-
+    l_sqltext := 'CREATE SYNONYM yaashsr.dba_hist_active_sess_history FOR yaashsr.active_session_history_all';
+    EXECUTE IMMEDIATE l_sqltext;
 END;
 /
 
