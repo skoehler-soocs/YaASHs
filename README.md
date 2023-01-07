@@ -65,26 +65,39 @@ SQL> exec yaashsr.repo.add_target(  p_name => '<DATABASE_NAME>',
 ```
 ### Adding a RAC instance / database (needs to be done for every RAC instance / database that should be sampled/monitored)
 ```
-SQL> exec yaashsr.repo.add_target(   p_name => '<DATABASE_NAME>', 
-                                     p_host_name => '<HOST_NAME>', 
-                                     p_listener_port => <LISTENER_PORT>, 
-                                     p_service_name => '<SERVICE_NAME>', 
-                                     p_instance_number => <INSTANCE_NUMBER_OF_RAC_INSTANCE>,
-                                     p_instance_name => '<INSTANCE_NAME_OF_RAC_INSTANCE>',
-                                     p_username => '<USERNAME_IN_TARGET_DATABASE>',
-                                     p_password => '<PASSWORD_OF_USER_IN_TARGET_DATABASE>');
+SQL> exec yaashsr.repo.add_target(  p_name => '<DATABASE_NAME>', 
+                                    p_host_name => '<HOST_NAME>', 
+                                    p_listener_port => <LISTENER_PORT>, 
+                                    p_service_name => '<SERVICE_NAME>', 
+                                    p_instance_number => <INSTANCE_NUMBER_OF_RAC_INSTANCE>,
+                                    p_instance_name => '<INSTANCE_NAME_OF_RAC_INSTANCE>',
+                                    p_username => '<USERNAME_IN_TARGET_DATABASE>',
+                                    p_password => '<PASSWORD_OF_USER_IN_TARGET_DATABASE>');
+```
+### Deleting a target database and disable its ASH (and SQL ID/text) sampling
+```
+-- Parameter values can be obtained from table yaashsr.targets if unknown 
+SQL> exec yaashsr.repo.delete_target(  p_name => '<DATABASE_NAME>', 
+                                       p_instance_number => <INSTANCE_NUMBER>, 
+                                       p_dbid => <DBID>);
 ```
 
 ### Disabling a target database and its ASH (and SQL ID/text) sampling
 ```
 -- Parameter values can be obtained from table yaashsr.targets if unknown 
-SQL> exec yaashsr.repo.change_target_status(p_name => '<DATABASE_NAME>', p_instance_number => <INSTANCE_NUMBER>, p_dbid => <DBID>, p_status => 'DISABLED');
+SQL> exec yaashsr.repo.change_target_status(  p_name => '<DATABASE_NAME>', 
+                                              p_instance_number => <INSTANCE_NUMBER>, 
+                                              p_dbid => <DBID>, 
+                                              p_status => 'DISABLED');
 ```
 
 ### Enabling a target database and its ASH (and SQL ID/text) sampling
 ```
 -- Parameter values can be obtained from table yaashsr.targets if unknown 
-SQL> exec yaashsr.repo.change_target_status(p_name => '<DATABASE_NAME>', p_instance_number => <INSTANCE_NUMBER>, p_dbid => <DBID>, p_status => 'ENABLED');
+SQL> exec yaashsr.repo.change_target_status(  p_name => '<DATABASE_NAME>', 
+                                              p_instance_number => <INSTANCE_NUMBER>, 
+                                              p_dbid => <DBID>, 
+                                              p_status => 'ENABLED');
 ```
 
 ### Exemplary output of Tanel Poder's [ashtop.sql](https://github.com/tanelpoder/tpt-oracle/blob/master/ash/ashtop.sql) with YaASHs
