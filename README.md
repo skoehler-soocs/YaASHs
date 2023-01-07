@@ -37,6 +37,7 @@ What kind of user do you want to deploy?
 * **TARGETS** - Table that stores metadata for all configured target databases
 * **ACTIVE_SESSION_HISTORY_ALL** - View over all ASH_SAMPLES_DAY_[1-31] tables
 * **ACTIVE_SESSION_HISTORY_DAILY** - View for the current (same day) ASH_SAMPLES_DAY_[1-31] table
+* **DBA_HIST_ACTIVE_SESS_HISTORY** - Synonym to ACTIVE_SESSION_HISTORY_ALL, which means that all ASH sample queries that are executed in schema YAASHSR in the repository database are redirected to YaASHs
 * **GV$ACTIVE_SESSION_HISTORY** - Synonym to ACTIVE_SESSION_HISTORY_ALL, which means that all ASH sample queries that are executed in schema YAASHSR in the repository database are redirected to YaASHs
 * **V$ACTIVE_SESSION_HISTORY** - Synonym to ACTIVE_SESSION_HISTORY_ALL, which means that all ASH sample queries that are executed in schema YAASHSR in the repository database are redirected to YaASHs
 
