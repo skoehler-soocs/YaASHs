@@ -1,0 +1,7 @@
+# MacOS generated files 
+##########################
+.DS_Store
+
+# PowerPoint files
+##########################
+pics/*.pptx
