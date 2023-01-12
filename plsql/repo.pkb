@@ -8,12 +8,15 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.repo AS
 
 
     PROCEDURE add_target (p_name VARCHAR2, p_host_name VARCHAR2, p_listener_port NUMBER, p_service_name VARCHAR2, p_instance_number NUMBER, p_instance_name VARCHAR2, p_username VARCHAR2, p_password VARCHAR2) IS
-        l_dbid         targets.dbid%TYPE;
-        l_db_link_name targets.db_link_name%TYPE;
-        l_is_pdb       targets.is_pluggable%TYPE;
-        l_is_rac       targets.is_rac%TYPE;
-        l_sqltext      VARCHAR2(4000);
-        l_version_num  NUMBER;
+        l_db_dom_num       NUMBER;
+        l_db_dom_value     global_name.global_name%TYPE;
+        l_dbid             targets.dbid%TYPE;
+        l_db_link_name     targets.db_link_name%TYPE;
+        l_db_link_name_dom targets.db_link_name%TYPE;
+        l_is_pdb           targets.is_pluggable%TYPE;
+        l_is_rac           targets.is_rac%TYPE;
+        l_sqltext          VARCHAR2(4000);
+        l_version_num      NUMBER;
     BEGIN
         -- Temporary database link is needed because final attributes like dbid are not known yet (it must be a single instance if p_instance_name IS NULL)
         l_db_link_name := 'DBL_' || p_name || '_' || p_instance_number || '_TMP';
@@ -26,34 +29,49 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.repo AS
         END IF;
         EXECUTE IMMEDIATE l_sqltext;
         
+        -- Database links are implicitly created with domain name if global_name includes FQDN
+        SELECT instr(global_name, '.'), substr(global_name, instr(global_name, '.') + 1) INTO l_db_dom_num, l_db_dom_value FROM global_name;
+        IF l_db_dom_num = 0 THEN
+            l_db_link_name_dom := l_db_link_name;
+        ELSE
+            l_db_link_name_dom := l_db_link_name || '.' || l_db_dom_value;
+        END IF;
+        
         -- Work-around for determining if target database is NONCDB, CDB or PDB because sys_context() does not work over database link
-        l_sqltext := 'SELECT to_number(substr(version,0,2)) FROM v$instance@' || l_db_link_name;
+        l_sqltext := 'SELECT to_number(substr(version,0,2)) FROM v$instance@' || l_db_link_name_dom;
         EXECUTE IMMEDIATE l_sqltext INTO l_version_num;
         IF l_version_num < 12 THEN
             l_is_pdb := 'NONCDB';
         ELSE
-            l_sqltext := q'[SELECT CASE WHEN CON_ID = 0 THEN 'NONCDB' WHEN CON_ID = 1 THEN 'CDB' ELSE 'PDB' END is_pdb FROM v$session@]' || l_db_link_name || 
-                         q'[ WHERE sid IN (SELECT sid FROM v$mystat@]' || l_db_link_name || ')';
+            l_sqltext := q'[SELECT CASE WHEN CON_ID = 0 THEN 'NONCDB' WHEN CON_ID = 1 THEN 'CDB' ELSE 'PDB' END is_pdb FROM v$session@]' || l_db_link_name_dom || 
+                         q'[ WHERE sid IN (SELECT sid FROM v$mystat@]' || l_db_link_name_dom || ')';
             EXECUTE IMMEDIATE l_sqltext INTO l_is_pdb;    
         END IF;
         
-        l_sqltext := q'[SELECT decode(value,'FALSE','NO','YES') FROM v$parameter@]' || l_db_link_name || q'[ WHERE name = 'cluster_database']';
+        l_sqltext := q'[SELECT decode(value,'FALSE','NO','YES') FROM v$parameter@]' || l_db_link_name_dom || q'[ WHERE name = 'cluster_database']';
         EXECUTE IMMEDIATE l_sqltext INTO l_is_rac;
 
         IF l_is_pdb = 'PDB' THEN
-            l_sqltext := q'[SELECT dbid FROM v$pdbs@]' || l_db_link_name || q'[ WHERE name = ']' || p_name || q'[']' ;
+            l_sqltext := q'[SELECT dbid FROM v$pdbs@]' || l_db_link_name_dom || q'[ WHERE name = ']' || p_name || q'[']' ;
         ELSE
-            l_sqltext := q'[SELECT dbid FROM v$database@]' || l_db_link_name;
+            l_sqltext := q'[SELECT dbid FROM v$database@]' || l_db_link_name_dom;
         END IF;
         EXECUTE IMMEDIATE l_sqltext INTO l_dbid;
         
         l_sqltext := 'DROP DATABASE LINK ' || l_db_link_name;
         EXECUTE IMMEDIATE l_sqltext;
-              
+        
         l_db_link_name := 'DBL_' || p_name || '_' || p_instance_number || '_' || l_dbid;
         
+        -- Database links are implicitly created with domain name if global_name includes FQDN
+        IF l_db_dom_num = 0 THEN
+            l_db_link_name_dom := l_db_link_name;
+        ELSE
+            l_db_link_name_dom := l_db_link_name || '.' || l_db_dom_value;
+        END IF;
+        
         INSERT INTO targets(name,dbid,is_pluggable,is_rac,host_name,listener_port,instance_number,service_name,instance_name,db_link_name,status)
-                     VALUES(p_name,l_dbid,l_is_pdb,l_is_rac,p_host_name,p_listener_port,p_instance_number,p_service_name,p_instance_name,l_db_link_name,'ADDED');
+                     VALUES(p_name,l_dbid,l_is_pdb,l_is_rac,p_host_name,p_listener_port,p_instance_number,p_service_name,p_instance_name,l_db_link_name_dom,'ADDED');
         COMMIT;
         
         IF l_is_rac = 'FALSE' THEN
