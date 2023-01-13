@@ -250,12 +250,12 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ut_yaashs AS
     PROCEDURE ut_repo_maintenance IS
         l_count NUMBER;
     BEGIN
-        UPDATE active_session_history_daily SET sample_time=SYSDATE-10 WHERE sql_id <> '17w34v1rpnru1' OR sql_id IS NULL;
+        UPDATE active_session_history_daily SET sample_time=SYSDATE-10 WHERE sql_id <> '229c5a3jfgp55' OR sql_id IS NULL;
         COMMIT;
         
         repo.repo_maintenance();
         
-        SELECT count(*) INTO l_count FROM active_session_history_daily WHERE sql_id <> '17w34v1rpnru1';
+        SELECT count(*) INTO l_count FROM active_session_history_daily WHERE sql_id <> '229c5a3jfgp55';
         ut.expect(l_count,'ASH samples were not cleaned up properly.').to_equal(0);  
         
         SELECT count(*) INTO l_count FROM sql;
