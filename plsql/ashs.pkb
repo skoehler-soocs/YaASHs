@@ -73,7 +73,7 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ashs AS
         l_sampleid      NUMBER;
         l_sampling_type targets.sampling_type%TYPE;
         l_sqltext       VARCHAR2(4000);
-        l_sqltext_where VARCHAR2(50) DEFAULT '1 = 1';
+        l_sqltext_where VARCHAR2(100) DEFAULT '1 = 1';
         l_username      user_db_links.username%TYPE;
         l_version       col_mapping.version%TYPE;          
     BEGIN
@@ -86,7 +86,8 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ashs AS
         SELECT username INTO l_username FROM user_db_links WHERE db_link = l_db_link_name;
         
         IF l_sample_idle = 'NO' THEN
-            l_sqltext_where := 'status = ''ACTIVE'' AND wait_class <> ''Idle''';
+            -- Additional predicate "OR state <> 'WAITING'" is needed in older Oracle releases for cases like hard parsing (and running on CPU) as wait_class is still Idle in such cases
+            l_sqltext_where := 'status = ''ACTIVE'' AND (wait_class <> ''Idle'' OR state <> ''WAITING'')';
         END IF;
         
         SELECT col_ashs, col_sess INTO l_col_ashs_s, l_col_sess_s FROM col_mapping WHERE version = l_version AND type = 'STANDARD';
