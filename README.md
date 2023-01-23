@@ -4,7 +4,8 @@ YaASHs is a free PL/SQL tool and open source project that simulates Oracle's ASH
 This project was inspired by [OraSASH](http://pioro.github.io/orasash/) but is a complete rewrite from the scratch with a different focus and following benefits:
 * 100% compatibility with original ASH objects like (G)V$ACTIVE_SESSION_HISTORY
 * Easier to maintain various Oracle target database versions
-* No object installation needed in Oracle target database
+* No object installation needed in Oracle target database by default (standard mode)
+* ASH sampling with additional columns if you are allowed / it is possible to create one view in Oracle target database (advanced mode)
 * Tools like [ashtop.sql](https://github.com/tanelpoder/tpt-oracle/blob/master/ash/ashtop.sql) or [ash_wait_chains.sql](https://github.com/tanelpoder/tpt-oracle/blob/master/ash/ash_wait_chains.sql) by Tanel Poder should work out of the box because of 100% ASH compatibility
 * No replacement for STATSPACK in the target database as YaASHs focuses on sampling V$SESSION (and V$SQL) for ASH only and should be considered as an addition/extension to STATSPACK (same like AWR reports vs. ASH samples)
 
@@ -99,6 +100,51 @@ SQL> exec yaashsr.repo.change_target_status(  p_name => '<DATABASE_NAME>',
                                               p_dbid => <DBID>, 
                                               p_status => 'ENABLED');
 ```
+
+### Advanced ASH sampling mode (Target database version 11.2.x or higher is needed)
+After a target database has been added to the repository (and is enabled) the sampling type/mode can be changed as documented in this section. One view needs to be installed in the target database for advanced ASH sampling mode as YaASHs needs access to x$ksuse for that. In advanced ASH sampling mode the following additional ASH columns are populated:
+* **SQL_PLAN_HASH_VALUE** - Numeric representation of the SQL plan for the cursor
+* **TIME_MODEL** - Time model information
+* **IN_CONNECTION_MGMT** - Indicates whether the session was doing connection management at the time of sampling
+* **IN_PARSE** - Indicates whether the session was parsing at the time of sampling
+* **IN_HARD_PARSE** - Indicates whether the session was hard parsing at the time of sampling
+* **IN_SQL_EXECUTION** - Indicates whether the session was executing SQL statements at the time of sampling
+* **IN_PLSQL_EXECUTION** - Indicates whether the session was executing PL/SQL at the time of sampling
+* **IN_PLSQL_RPC** - Indicates whether the session was executing inbound PL/SQL RPC calls at the time of sampling
+* **IN_PLSQL_COMPILATION** - Indicates whether the session was compiling PL/SQL at the time of sampling 
+* **IN_JAVA_EXECUTION** - Indicates whether the session was executing Java at the time of sampling 
+* **IN_BIND** - Indicates whether the session was doing bind operations at the time of sampling 
+* **IN_CURSOR_CLOSE** - Indicates whether the session was closing a cursor at the time of sampling 
+* **IN_SEQUENCE_LOAD** - Indicates whether the session is loading in sequence (in sequence load code)
+* **IN_INMEMORY_QUERY** - Indicates whether the session was querying the In-Memory Column Store (IM column store) at the time of sampling
+* **IN_INMEMORY_POPULATE** - Indicates whether the session was populating the IM column store at the time of sampling
+* **IN_INMEMORY_PREPOPULATE** - Indicates whether the session was prepopulating the IM column store at the time of sampling 
+* **IN_INMEMORY_REPOPULATE** - Indicates whether the session was repopulating the IM column store at the time of sampling
+* **IN_INMEMORY_TREPOPULATE** - Indicates whether the session was trickle repopulating the IM column store at the time of sampling
+* **IN_TABLESPACE_ENCRYPTION** - Indicates whether encryption or decryption of a tablespace occurred at the time of sampling
+
+#### Enabling advanced ASH sampling mode
+```
+-- Parameter values can be obtained from table yaashsr.targets if unknown
+-- Follow the instructions that are printed out by yaashsr.repo.generate_advanced_view_target
+SQL> set serveroutput on;
+SQL> exec yaashsr.repo.generate_advanced_view_target(  p_name => '<DATABASE_NAME>', 
+                                                       p_dbid => <DBID>);
+
+-- Execute the following procedure after the view (and its grant) has been created in target database
+SQL> exec yaashsr.repo.change_target_type(  p_name => '<DATABASE_NAME>', 
+                                            p_dbid => <DBID>,
+                                            p_sampling_type = 'ADVANCED');
+```
+
+#### Disabling advanced ASH sampling mode / Reverting to standard ASH sampling mode
+```
+-- Parameter values can be obtained from table yaashsr.targets if unknown
+SQL> exec yaashsr.repo.change_target_type(  p_name => '<DATABASE_NAME>', 
+                                            p_dbid => <DBID>,
+                                            p_sampling_type = 'STANDARD');
+```
+
 
 ### Exemplary output of Tanel Poder's [ashtop.sql](https://github.com/tanelpoder/tpt-oracle/blob/master/ash/ashtop.sql) with YaASHs
 ```

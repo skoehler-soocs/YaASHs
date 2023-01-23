@@ -15,6 +15,7 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ut_yaashs AS
     gc_listener_port   CONSTANT targets.listener_port%TYPE := 1521;
     gc_name            CONSTANT targets.name%TYPE := 'T1911DB';
     gc_password        CONSTANT VARCHAR2(400) := 'yaashst';
+    gc_sampling_type   CONSTANT targets.sampling_type%TYPE := 'STANDARD';
     gc_service_name    CONSTANT targets.service_name%TYPE := 'T1911DB';
     gc_username        CONSTANT VARCHAR2(400) := 'yaashst';
     gc_version         CONSTANT v$instance.version%TYPE := '19.0';
@@ -194,7 +195,7 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ut_yaashs AS
         l_count NUMBER;
     BEGIN
         dbms_session.sleep(80);
-        SELECT count(*) INTO l_count FROM active_session_history_daily WHERE name = gc_name AND inst_id = gc_instance_number AND dbid = gc_dbid AND sample_time between SYSDATE-80/24/60/60 and SYSDATE;
+        SELECT count(*) INTO l_count FROM active_session_history_daily WHERE name = gc_name AND inst_id = gc_instance_number AND dbid = gc_dbid AND sample_time BETWEEN SYSDATE-80/24/60/60 AND SYSDATE;
         ut.expect(l_count,'No ASH samples were collected.').to_be_greater_or_equal(1);
 
         SELECT count(*) INTO l_count FROM sql;
@@ -209,7 +210,7 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ut_yaashs AS
         l_col_mapping_row col_mapping%ROWTYPE;
         l_count           NUMBER;
     BEGIN
-        DELETE FROM col_mapping WHERE version = gc_version RETURNING version,col_sess,col_ashs INTO l_col_mapping_row;
+        DELETE FROM col_mapping WHERE version = gc_version AND type = gc_sampling_type RETURNING version,type,col_sess,col_ashs INTO l_col_mapping_row;
         COMMIT;
         
         repo.change_target_status(gc_name,gc_instance_number,gc_dbid,'DISABLED');
@@ -220,12 +221,68 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ut_yaashs AS
         SELECT count(*) INTO l_count FROM messages WHERE message like '%column mapping in table col_mapping%'; 
         ut.expect(l_count,'Missing column mapping in table col_mapping was not identified.').to_equal(1);
         
-        INSERT INTO col_mapping(version,col_sess,col_ashs) VALUES (l_col_mapping_row.version,l_col_mapping_row.col_sess,l_col_mapping_row.col_ashs);
+        INSERT INTO col_mapping(version,type,col_sess,col_ashs) VALUES (l_col_mapping_row.version,l_col_mapping_row.type,l_col_mapping_row.col_sess,l_col_mapping_row.col_ashs);
         DELETE FROM messages;
         COMMIT;
     END ut_ash_sql_samples_failure;
-    
-    
+
+
+    PROCEDURE ut_change_sampling_type_failure IS
+        l_col_mapping_row col_mapping%ROWTYPE;
+        l_count           NUMBER;
+    BEGIN
+        repo.change_target_type(gc_name,gc_dbid,'NOTVALIDVALUE');
+        SELECT count(*) INTO l_count FROM messages WHERE message like '%invalid option NOTVALIDVALUE%'; 
+        ut.expect(l_count,'Invalid option for parameter p_sampling_type was not identified.').to_equal(1);
+        
+        repo.change_target_type(gc_name,gc_dbid,'ADVANCED');
+        SELECT count(*) INTO l_count FROM messages WHERE message like '%view SYS.YAASHS_V$SESSION is not available in target database%'; 
+        ut.expect(l_count,'Missing view SYS.YAASHS_V$SESSION in target database was not identified.').to_equal(1); 
+        
+        -- Unit tester needs to manually execute the following procedure and its instructions within 100 seconds - otherwise all following unit tests will not be valid
+        -- set serveroutput on;
+        -- exec yaashsr.repo.generate_advanced_view_target(p_name => 'T1911DB', p_dbid => 2181059197);
+        dbms_session.sleep(100);
+        
+        DELETE FROM col_mapping WHERE version = gc_version AND type = 'ADVANCED' RETURNING version,type,col_sess,col_ashs INTO l_col_mapping_row;
+        COMMIT;
+         
+        repo.change_target_type(gc_name,gc_dbid,'ADVANCED');
+        SELECT count(*) INTO l_count FROM messages WHERE message like '%no column mapping available for Oracle version%'; 
+        ut.expect(l_count,'Missing advanced view mapping in table advanced_view_def was not identified.').to_equal(1);
+        
+        INSERT INTO col_mapping(version,type,col_sess,col_ashs) VALUES (l_col_mapping_row.version,l_col_mapping_row.type,l_col_mapping_row.col_sess,l_col_mapping_row.col_ashs);
+        DELETE FROM messages;
+        COMMIT;
+        
+        SELECT count(*) INTO l_count FROM targets WHERE name = gc_name AND dbid = gc_dbid AND sampling_type = 'ADVANCED';
+        ut.expect(l_count,'Target database has wrong sampling type/mode.').to_equal(0);
+    END ut_change_sampling_type_failure;
+
+
+    PROCEDURE ut_change_sampling_type_success IS
+        l_count NUMBER;
+    BEGIN
+        repo.change_target_type(gc_name,gc_dbid,'ADVANCED');
+        SELECT count(*) INTO l_count FROM targets WHERE name = gc_name AND dbid = gc_dbid AND sampling_type = 'ADVANCED';
+        ut.expect(l_count,'Target database has wrong sampling type/mode.').to_be_greater_or_equal(1);
+    END ut_change_sampling_type_success;    
+
+
+    PROCEDURE ut_advanced_ash_samples_success IS
+        l_count NUMBER;
+    BEGIN
+        dbms_session.sleep(20);
+        SELECT count(*) INTO l_count FROM active_session_history_daily WHERE name = gc_name AND inst_id = gc_instance_number AND dbid = gc_dbid AND sample_time BETWEEN SYSDATE-20/24/60/60 AND SYSDATE
+                                                                       AND sql_plan_hash_value IS NOT NULL AND time_model IS NOT NULL AND in_connection_mgmt IS NOT NULL AND in_parse IS NOT NULL AND in_hard_parse IS NOT NULL 
+                                                                       AND in_sql_execution IS NOT NULL AND in_plsql_execution IS NOT NULL AND in_plsql_rpc IS NOT NULL AND in_plsql_compilation IS NOT NULL 
+                                                                       AND in_java_execution IS NOT NULL AND in_bind IS NOT NULL AND in_cursor_close IS NOT NULL AND in_sequence_load IS NOT NULL AND in_inmemory_query IS NOT NULL 
+                                                                       AND in_inmemory_populate IS NOT NULL AND in_inmemory_prepopulate IS NOT NULL AND in_inmemory_repopulate IS NOT NULL AND in_inmemory_trepopulate IS NOT NULL 
+                                                                       AND in_tablespace_encryption IS NOT NULL;
+        ut.expect(l_count,'No advanced ASH samples were collected.').to_be_greater_or_equal(1);
+    END ut_advanced_ash_samples_success;  
+
+
     PROCEDURE ut_delete_target_single_instance IS
         l_count NUMBER;
     BEGIN 

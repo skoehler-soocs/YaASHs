@@ -25,9 +25,15 @@ CREATE OR REPLACE PACKAGE yaashsr.repo AS
     
     -- Changes the status of a particular target database in the repository database and enables/disables or delays the ASH samples collection (p_status can be DISABLED, ENABLED or DESCHEDULED)
     PROCEDURE change_target_status (p_name VARCHAR2, p_instance_number NUMBER DEFAULT 1, p_dbid NUMBER, p_status VARCHAR2);
+
+    -- Changes the ASH sampling type of a particular target database in the repository database (p_sampling_type can be 'STANDARD' or 'ADVANCED')
+    PROCEDURE change_target_type (p_name VARCHAR2, p_dbid NUMBER, p_sampling_type VARCHAR2); 
     
     -- General (error) logging procedure that stores the call stack and error message and is used by all other functions/procedures
     PROCEDURE error_message (p_message VARCHAR2);
+
+    -- Generates the commands to create the advanced view SYS.YAASHS_V$SESSION for a particular target database
+    PROCEDURE generate_advanced_view_target (p_name VARCHAR2, p_dbid NUMBER); 
     
     -- Repository database maintenance procedure that is scheduled daily at 00:00:01 (yaashs_repo_maintenance) and renames objects, cleans up old ASH/SQL samples and (error) messages  
     PROCEDURE repo_maintenance;

@@ -24,6 +24,7 @@ CREATE USER &YAASHS_USER IDENTIFIED BY &YAASHS_PASS DEFAULT TABLESPACE &YAASHS_T
 -- Permissions
 ---------------------------------------------------------------------------------------------
 GRANT CREATE SESSION TO &YAASHS_USER;
+GRANT CREATE SYNONYM TO &YAASHS_USER;
 GRANT SELECT ON v_$database TO &YAASHS_USER;
 GRANT SELECT ON v_$instance TO &YAASHS_USER;
 GRANT SELECT ON v_$mystat TO &YAASHS_USER;

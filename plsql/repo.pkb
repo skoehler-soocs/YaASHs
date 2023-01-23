@@ -70,8 +70,8 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.repo AS
             l_db_link_name_dom := l_db_link_name || '.' || l_db_dom_value;
         END IF;
         
-        INSERT INTO targets(name,dbid,is_pluggable,is_rac,host_name,listener_port,instance_number,service_name,instance_name,db_link_name,status)
-                     VALUES(p_name,l_dbid,l_is_pdb,l_is_rac,p_host_name,p_listener_port,p_instance_number,p_service_name,p_instance_name,l_db_link_name_dom,'ADDED');
+        INSERT INTO targets(name,dbid,is_pluggable,is_rac,host_name,listener_port,instance_number,service_name,instance_name,db_link_name,status,sampling_type)
+                     VALUES(p_name,l_dbid,l_is_pdb,l_is_rac,p_host_name,p_listener_port,p_instance_number,p_service_name,p_instance_name,l_db_link_name_dom,'ADDED','STANDARD');
         COMMIT;
         
         IF l_is_rac = 'FALSE' THEN
@@ -99,7 +99,7 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.repo AS
         l_count        NUMBER;
         l_valid_v      NUMBER DEFAULT 0;
     BEGIN
-        SELECT count(*) INTO l_count FROM configuration where name = upper(p_name);
+        SELECT count(*) INTO l_count FROM configuration WHERE name = upper(p_name);
         IF l_count = 0 THEN
             error_message('Error during changing configuration in repository database - invalid parameter ' || p_name);
         ELSE
@@ -206,8 +206,8 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.repo AS
 
 
     PROCEDURE delete_target (p_name VARCHAR2, p_instance_number NUMBER, p_dbid NUMBER) IS
-        l_db_link_name  targets.db_link_name%TYPE;
-        l_sqltext       VARCHAR2(4000);
+        l_db_link_name targets.db_link_name%TYPE;
+        l_sqltext      VARCHAR2(4000);
     BEGIN
         SELECT db_link_name INTO l_db_link_name FROM targets WHERE name = p_name AND instance_number = p_instance_number AND dbid = p_dbid;
         
@@ -247,15 +247,107 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.repo AS
         WHEN OTHERS THEN
             error_message('Error during changing the state of target database ' || p_name || ' in repository: ' || SQLCODE);
     END change_target_status;
-        
 
-    PROCEDURE error_message(p_message VARCHAR2) IS
+
+    PROCEDURE change_target_type (p_name VARCHAR2, p_dbid NUMBER, p_sampling_type VARCHAR2) IS
+        l_valid_v     NUMBER DEFAULT 0;
+        l_count       NUMBER;
+        l_ddltext     VARCHAR2(4000);
+        l_sqltext     VARCHAR2(4000);
+        l_targets_row targets%ROWTYPE;
+        l_version     v$instance.version%TYPE;
+    BEGIN
+        SELECT * INTO l_targets_row FROM targets WHERE name = p_name AND dbid = p_dbid AND status = 'ENABLED' AND rownum = 1 ORDER BY instance_number;
+        l_version := ashs.get_db_version(l_targets_row.name,l_targets_row.instance_number,l_targets_row.dbid);
+
+        CASE upper(p_sampling_type)
+            WHEN 'STANDARD' THEN
+                l_ddltext := q'[DROP SYNONYM V$SESSION]';
+                l_valid_v := 1;
+            WHEN 'ADVANCED' THEN
+                l_ddltext := q'[CREATE OR REPLACE SYNONYM V$SESSION FOR SYS.YAASHS_V$SESSION]';
+                l_sqltext := q'[SELECT count(*) FROM all_tab_columns@]' || l_targets_row.db_link_name || q'[ WHERE owner = 'SYS' AND table_name = 'YAASHS_V$SESSION' AND column_name like 'YAASHS_%']';
+                EXECUTE IMMEDIATE l_sqltext INTO l_count;
+                IF l_count > 0 THEN
+                    l_valid_v := 1;
+                ELSE
+                    error_message('Error during changing the ASH sampling type of target database ' || p_name || ' - view SYS.YAASHS_V$SESSION is not available in target database');
+                END IF;
+            ELSE
+                error_message('Error during changing the ASH sampling type of target database ' || p_name || ' - invalid option ' || p_sampling_type);
+        END CASE;
+        
+        IF l_valid_v = 1 THEN
+            SELECT count(*) INTO l_count FROM col_mapping WHERE version = l_version AND type = upper(p_sampling_type);
+            IF l_count = 1 THEN
+                FOR l_all_targets IN (SELECT name, dbid, instance_number FROM targets WHERE name = p_name AND dbid = p_dbid AND status = 'ENABLED')
+                LOOP
+                    change_target_status(l_all_targets.name,l_all_targets.instance_number,l_all_targets.dbid,'DESCHEDULED');
+                END LOOP;
+
+                UPDATE targets SET sampling_type = upper(p_sampling_type) WHERE name = p_name AND dbid = p_dbid;
+                COMMIT;
+
+                l_sqltext := q'[BEGIN dbms_utility.exec_ddl_statement@]' || l_targets_row.db_link_name || q'[(']' || l_ddltext || q'['); END;]';
+                EXECUTE IMMEDIATE l_sqltext;
+                
+                FOR l_all_targets IN (SELECT name, dbid, instance_number FROM targets WHERE name = p_name AND dbid = p_dbid AND status = 'DESCHEDULED')
+                LOOP
+                    change_target_status(l_all_targets.name,l_all_targets.instance_number,l_all_targets.dbid,'ENABLED');
+                END LOOP;                
+            ELSE
+                error_message('Error during changing the ASH sampling type of target database ' || p_name || ' - no column mapping available for Oracle version ' || l_version || ' and sampling type ' || p_sampling_type);
+            END IF;
+        END IF;
+    EXCEPTION
+        WHEN OTHERS THEN
+            error_message('Error during changing the ASH sampling type of target database ' || p_name || ' in repository: ' || SQLCODE);
+    END change_target_type;        
+
+
+    PROCEDURE error_message (p_message VARCHAR2) IS
         PRAGMA AUTONOMOUS_TRANSACTION;
         l_callstack messages.stack%TYPE DEFAULT dbms_utility.format_call_stack;
     BEGIN
         INSERT INTO messages(time,stack,message) VALUES (SYSDATE,l_callstack,p_message);
         COMMIT;
     END error_message;
+
+
+    PROCEDURE generate_advanced_view_target (p_name VARCHAR2, p_dbid NUMBER) IS
+        l_count       NUMBER;
+        l_targets_row targets%ROWTYPE;
+        l_u_db_row    user_db_links%ROWTYPE;
+        l_version     v$instance.version%TYPE;
+        l_view_def    advanced_view_def.view_definition%TYPE;
+    BEGIN
+        SELECT * INTO l_targets_row FROM targets WHERE name = p_name AND dbid = p_dbid AND status = 'ENABLED' AND rownum = 1 ORDER BY instance_number;
+        l_version := ashs.get_db_version(l_targets_row.name,l_targets_row.instance_number,l_targets_row.dbid);
+        SELECT count(*) INTO l_count FROM advanced_view_def WHERE version = l_version;
+        IF l_count = 1 THEN
+            SELECT * INTO l_u_db_row FROM user_db_links WHERE db_link = l_targets_row.db_link_name;
+            SELECT view_definition INTO l_view_def FROM advanced_view_def WHERE version = l_version;
+            
+            dbms_output.enable(NULL);
+            dbms_output.put_line('Please execute the following commands on/for the target database to create the necessary view SYS.YAASHS_V$SESSION for advanced ASH sampling');
+            dbms_output.put_line('********************************************************************************************************************************************');
+            dbms_output.put_line('-- Connect to target database ' || l_targets_row.name || ' as SYS');
+            dbms_output.put_line('sqlplus SYS@' || l_u_db_row.host || ' as sysdba');
+            dbms_output.new_line();
+            dbms_output.put_line('-- Run the following SQL commands on target database ' || l_targets_row.name);
+            dbms_output.put_line('CREATE OR REPLACE VIEW SYS.YAASHS_V$SESSION AS');
+            dbms_output.put_line(l_view_def || ';');
+            dbms_output.new_line();
+            dbms_output.put_line('GRANT SELECT ON SYS.YAASHS_V$SESSION TO ' || l_u_db_row.username || ';');
+            dbms_output.put_line('quit;');
+            dbms_output.put_line('********************************************************************************************************************************************');
+        ELSE
+            error_message('Error during generating the advanced view for target database ' || p_name || ': Database version ' ||  l_version || ' is not supported for advanced ASH sampling');
+        END IF;
+    EXCEPTION
+        WHEN OTHERS THEN
+            error_message('Error during generating the advanced view for target database ' || p_name || ': ' || SQLCODE);
+    END generate_advanced_view_target;        
     
 
     PROCEDURE repo_maintenance IS
@@ -270,7 +362,7 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.repo AS
         END LOOP;
         
         SELECT to_number(to_char(SYSDATE, 'DD')) INTO l_day FROM dual;
-        l_sqltext := 'CREATE OR REPLACE VIEW yaashsr.active_session_history_daily as select * from yaashsr.ash_samples_day_' || l_day;
+        l_sqltext := 'CREATE OR REPLACE VIEW yaashsr.active_session_history_daily AS SELECT * FROM yaashsr.ash_samples_day_' || l_day;
         EXECUTE IMMEDIATE l_sqltext;
         
         FOR l_all_targets IN (SELECT name, dbid, instance_number FROM targets WHERE status = 'DESCHEDULED')

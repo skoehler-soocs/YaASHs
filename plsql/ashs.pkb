@@ -10,7 +10,7 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ashs AS
     PROCEDURE deschedule_ash_sampling (p_name VARCHAR2, p_instance_number NUMBER DEFAULT 1, p_dbid NUMBER) IS
         l_status    targets.status%TYPE;
     BEGIN
-        SELECT status INTO l_status FROM targets WHERE name = p_name and instance_number = p_instance_number AND dbid = p_dbid;
+        SELECT status INTO l_status FROM targets WHERE name = p_name AND instance_number = p_instance_number AND dbid = p_dbid;
         -- The status DISABLED is set by the end user and the status DESCHEDULED is set during repository maintenance activity
         IF l_status = 'DISABLED' OR l_status = 'DESCHEDULED' THEN
             dbms_scheduler.drop_job(job_name => 'yaashs_sample_ash_' || p_name || '_' || p_instance_number || '_' ||  p_dbid, force => TRUE);
@@ -47,7 +47,7 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ashs AS
         SELECT value INTO l_sampledura_s FROM configuration WHERE name = 'SAMPLEDURA_SEC';
         l_job_duration_m := (l_samplefreq_s * l_sampledura_s) / 60;
 
-        SELECT status INTO l_status FROM targets WHERE name = p_name and instance_number = p_instance_number AND dbid = p_dbid;
+        SELECT status INTO l_status FROM targets WHERE name = p_name AND instance_number = p_instance_number AND dbid = p_dbid;
         IF l_status = 'ENABLED' THEN
             l_sqltext := 'BEGIN ashs.sample_ash(''' || p_name || ''',' || p_instance_number || ',' || p_dbid || '); END;';
             dbms_scheduler.create_job(job_name => 'yaashs_sample_ash_' || p_name || '_' || p_instance_number || '_' ||  p_dbid, job_type => 'PLSQL_BLOCK', job_action => l_sqltext, start_date => SYSDATE, repeat_interval => 'FREQ=MINUTELY; INTERVAL=' || l_job_duration_m, enabled=> TRUE);
@@ -59,8 +59,10 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ashs AS
 
     
     PROCEDURE sample_ash (p_name VARCHAR2, p_instance_number NUMBER, p_dbid NUMBER) IS
-        l_col_ashs      col_mapping.col_ashs%TYPE;
-        l_col_sess      col_mapping.col_sess%TYPE;    
+        l_col_ashs_a    col_mapping.col_ashs%TYPE DEFAULT NULL;
+        l_col_sess_a    col_mapping.col_sess%TYPE DEFAULT NULL;
+        l_col_ashs_s    col_mapping.col_ashs%TYPE;
+        l_col_sess_s    col_mapping.col_sess%TYPE;
         l_date_start    DATE;
         l_date_end      DATE;
         l_dbid          targets.dbid%TYPE;
@@ -69,6 +71,7 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ashs AS
         l_sampledura_s  configuration.value%TYPE;
         l_samplefreq_s  configuration.value%TYPE;
         l_sampleid      NUMBER;
+        l_sampling_type targets.sampling_type%TYPE;
         l_sqltext       VARCHAR2(4000);
         l_sqltext_where VARCHAR2(50) DEFAULT '1 = 1';
         l_username      user_db_links.username%TYPE;
@@ -79,21 +82,27 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ashs AS
         SELECT value INTO l_sample_idle FROM configuration WHERE name = 'SAMPLE_IDLE';
         SELECT value INTO l_samplefreq_s FROM configuration WHERE name = 'SAMPLEFREQ_SEC';
         SELECT value INTO l_sampledura_s FROM configuration WHERE name = 'SAMPLEDURA_SEC';
-        SELECT db_link_name, dbid INTO l_db_link_name, l_dbid FROM targets WHERE name = p_name and instance_number = p_instance_number AND dbid = p_dbid;
-        SELECT col_ashs, col_sess INTO l_col_ashs, l_col_sess FROM col_mapping WHERE version = l_version;
+        SELECT db_link_name, dbid, sampling_type INTO l_db_link_name, l_dbid, l_sampling_type FROM targets WHERE name = p_name AND instance_number = p_instance_number AND dbid = p_dbid;
         SELECT username INTO l_username FROM user_db_links WHERE db_link = l_db_link_name;
         
         IF l_sample_idle = 'NO' THEN
             l_sqltext_where := 'status = ''ACTIVE'' AND wait_class <> ''Idle''';
         END IF;
+        
+        SELECT col_ashs, col_sess INTO l_col_ashs_s, l_col_sess_s FROM col_mapping WHERE version = l_version AND type = 'STANDARD';
+        
+        IF l_sampling_type = 'ADVANCED' THEN
+            SELECT col_ashs, col_sess INTO l_col_ashs_a, l_col_sess_a FROM col_mapping WHERE version = l_version AND type = 'ADVANCED';
+        END IF;
+    
+        l_sqltext := 'INSERT INTO active_session_history_daily(name,dbid,inst_id,sample_id,sample_time,' || l_col_ashs_s || l_col_ashs_a ||
+                     ') SELECT :val1, :val2, :val3, :val4, :val5, ' || l_col_sess_s || l_col_sess_a || ' FROM v$session@' || l_db_link_name || 
+                     ' WHERE ' || l_sqltext_where || ' AND username <> :val6';
                   
         FOR counter in 1 .. l_sampledura_s
         LOOP
             SELECT sample_id.nextval INTO l_sampleid FROM dual;
                 
-            l_sqltext := 'INSERT INTO active_session_history_daily(name,dbid,inst_id,sample_id,sample_time,' || l_col_ashs || 
-                         ') SELECT :val1, :val2, :val3, :val4, :val5, ' || l_col_sess || ' FROM v$session@' || l_db_link_name || ' WHERE ' || l_sqltext_where ||
-                         ' AND username <> :val6';
             EXECUTE IMMEDIATE l_sqltext USING p_name, l_dbid, p_instance_number, l_sampleid, SYSDATE, l_username;
             COMMIT;
                 
@@ -114,11 +123,11 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ashs AS
         l_db_link_name  targets.db_link_name%TYPE;
         l_sqltext       VARCHAR2(4000);
     BEGIN
-        SELECT db_link_name INTO l_db_link_name FROM targets WHERE name = p_name and instance_number = p_instance_number AND dbid = p_dbid;
+        SELECT db_link_name INTO l_db_link_name FROM targets WHERE name = p_name AND instance_number = p_instance_number AND dbid = p_dbid;
 
         l_sqltext := 'MERGE INTO sql reposql USING ' ||
                      '(SELECT DISTINCT vsql.sql_id, vsql.sql_text FROM v$sql@' || l_db_link_name || ' vsql, active_session_history_daily ashd ' || 
-                     'WHERE ashd.sql_id = vsql.sql_id AND ashd.sample_time BETWEEN :val1 AND :val2 and ashd.name = :val3 and ashd.inst_id = :val4 and ashd.dbid = :val5) ' ||
+                     'WHERE ashd.sql_id = vsql.sql_id AND ashd.sample_time BETWEEN :val1 AND :val2 AND ashd.name = :val3 AND ashd.inst_id = :val4 AND ashd.dbid = :val5) ' ||
                      'rsql ON (rsql.sql_id = reposql.sql_id) ' ||
                      'WHEN NOT MATCHED THEN INSERT (reposql.sql_id, reposql.sql_text) VALUES (rsql.sql_id, rsql.sql_text)';
         EXECUTE IMMEDIATE l_sqltext USING p_sample_start, p_sample_end, p_name, p_instance_number, p_dbid;
