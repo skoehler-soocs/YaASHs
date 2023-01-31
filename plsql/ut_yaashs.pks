@@ -68,6 +68,10 @@ CREATE OR REPLACE PACKAGE yaashsr.ut_yaashs AS
     --%disabled
     PROCEDURE ut_advanced_ash_samples_success;
 
+    -- Unit test that exports the previously added target database (including all corresponding ASH and SQL ID/text samples) with Data Pump
+    --%test(Case of success: Exporting target database with Data Pump)
+    PROCEDURE ut_export_target;
+
     -- Unit test that deletes the previously added target database and drops the ASH sampling job for it
     --%test(Case of success: Deleting a single instance target database)
     PROCEDURE ut_delete_target_single_instance;
@@ -75,5 +79,9 @@ CREATE OR REPLACE PACKAGE yaashsr.ut_yaashs AS
     -- Unit test that "ages" almost all ASH sample data (older than RETENTION_DAYS) first and checks for cleaned up data (ASH samples, SQL samples and messages) afterwards
     --%test(Case of success: Performing daily maintenance operations inside repository database)
     PROCEDURE ut_repo_maintenance;
+    
+    -- Unit test that imports the previously exported target database (including all corresponding ASH and SQL ID/text samples) with Data Pump
+    --%test(Case of success: Importing target database with Data Pump)
+    PROCEDURE ut_import_target;    
 END ut_yaashs;
 /

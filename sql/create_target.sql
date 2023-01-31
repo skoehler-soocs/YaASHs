@@ -12,7 +12,7 @@ accept YAASHS_USER default yaashst prompt "Please enter the username (default ya
 prompt Database user &YAASHS_USER will be dropped (if it already exists) and created
 accept OK_PROMPT prompt "Press any key to continue ..."
 accept YAASHS_PASS default yaashst prompt "Please enter the &YAASHS_USER user password (default yaashst): "
-accept YAASHS_TBS  default users prompt "Please enter the default tablespace for user &YAASHS_USER (default users): "
+accept YAASHS_TBS default users prompt "Please enter the default tablespace for user &YAASHS_USER (default users): "
 
 ---------------------------------------------------------------------------------------------
 -- (Re-)Create user

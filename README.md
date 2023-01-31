@@ -41,6 +41,7 @@ What kind of user do you want to deploy?
 * **DBA_HIST_ACTIVE_SESS_HISTORY** - Synonym to ACTIVE_SESSION_HISTORY_ALL, which means that all ASH sample queries that are executed in schema YAASHSR in the repository database are redirected to YaASHs
 * **GV$ACTIVE_SESSION_HISTORY** - Synonym to ACTIVE_SESSION_HISTORY_ALL, which means that all ASH sample queries that are executed in schema YAASHSR in the repository database are redirected to YaASHs
 * **V$ACTIVE_SESSION_HISTORY** - Synonym to ACTIVE_SESSION_HISTORY_ALL, which means that all ASH sample queries that are executed in schema YAASHSR in the repository database are redirected to YaASHs
+* **YAASHS_DIR** - Directory for exporting and importing target databases (including all corresponding ASH and SQL ID/text samples) with Data Pump
 
 ### Changing (global) configuration in the repository database
 Available configuration options are:
@@ -77,7 +78,7 @@ SQL> exec yaashsr.repo.add_target(  p_name => '<DATABASE_NAME>',
 ```
 ### Deleting a target database and disable its ASH (and SQL ID/text) sampling
 ```
--- Parameter values can be obtained from table yaashsr.targets if unknown 
+-- Parameter values can be obtained from table yaashsr.targets if unknown
 SQL> exec yaashsr.repo.delete_target(  p_name => '<DATABASE_NAME>', 
                                        p_instance_number => <INSTANCE_NUMBER>, 
                                        p_dbid => <DBID>);
@@ -85,7 +86,7 @@ SQL> exec yaashsr.repo.delete_target(  p_name => '<DATABASE_NAME>',
 
 ### Disabling a target database and its ASH (and SQL ID/text) sampling
 ```
--- Parameter values can be obtained from table yaashsr.targets if unknown 
+-- Parameter values can be obtained from table yaashsr.targets if unknown
 SQL> exec yaashsr.repo.change_target_status(  p_name => '<DATABASE_NAME>', 
                                               p_instance_number => <INSTANCE_NUMBER>, 
                                               p_dbid => <DBID>, 
@@ -94,7 +95,7 @@ SQL> exec yaashsr.repo.change_target_status(  p_name => '<DATABASE_NAME>',
 
 ### Enabling a target database and its ASH (and SQL ID/text) sampling
 ```
--- Parameter values can be obtained from table yaashsr.targets if unknown 
+-- Parameter values can be obtained from table yaashsr.targets if unknown
 SQL> exec yaashsr.repo.change_target_status(  p_name => '<DATABASE_NAME>', 
                                               p_instance_number => <INSTANCE_NUMBER>, 
                                               p_dbid => <DBID>, 
@@ -143,6 +144,35 @@ SQL> exec yaashsr.repo.change_target_type(  p_name => '<DATABASE_NAME>',
 SQL> exec yaashsr.repo.change_target_type(  p_name => '<DATABASE_NAME>', 
                                             p_dbid => <DBID>,
                                             p_sampling_type = 'STANDARD');
+```
+
+
+### Transporting target database(s) between repository databases
+Transporting all target databases or just a single target database (including all corresponding ASH and SQL ID/text samples) can be useful in case of remote performance troubleshooting/consulting (e.g. external consultant has no direct access to repository database) or for upgrading YaASHs to a new version. In case of a YaASHs upgrade - export all target databases, re-create the repository database (with the new YaASHs code base and with help of script [setup.sh](#installation)) and finally import all target databases again.
+#### Exporting
+```
+-- Parameter values can be obtained from table yaashsr.targets if unknown
+-- Exporting a single target database to directory YAASHS_DIR with Data Pump
+SQL> exec yaashsr.repo.transport_target_export(  p_name => '<DATABASE_NAME>', 
+                                                 p_dbid => <DBID>);
+
+-- Exporting all target databases to directory YAASHS_DIR with Data Pump
+SQL> exec yaashsr.repo.transport_target_export(  p_name => NULL, 
+                                                 p_dbid => NULL);
+```
+
+#### Importing
+All target databases will be imported with status IMPORTED which means that ASH (and SQL ID/text) sampling is not performed for the imported target databases by default. Please use the described procedure [here](#enabling-a-target-database-and-its-ash-and-sql-idtext-sampling) to enable ASH (and SQL ID/text) sampling for the imported target database(s) again.
+```
+-- Copy Data Pump dump file to YAASHS_DIR
+-- Parameter values can be obtained from Data Pump dump file name (e.g. YAASHS_EXPORT_ALL_TARGETS.dmp = NULL & NULL or YAASHS_EXPORT_<DATABASE_NAME>_<DBID>.dmp)
+-- Importing a single target database into the repository database with Data Pump
+SQL> exec yaashsr.repo.transport_target_import(  p_name => '<DATABASE_NAME>', 
+                                                 p_dbid => <DBID>);
+
+-- Importing all target databases into the repository database with Data Pump
+SQL> exec yaashsr.repo.transport_target_import(  p_name => NULL, 
+                                                 p_dbid => NULL);
 ```
 
 

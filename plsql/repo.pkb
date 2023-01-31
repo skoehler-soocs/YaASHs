@@ -208,10 +208,13 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.repo AS
     PROCEDURE delete_target (p_name VARCHAR2, p_instance_number NUMBER, p_dbid NUMBER) IS
         l_db_link_name targets.db_link_name%TYPE;
         l_sqltext      VARCHAR2(4000);
+        l_status       targets.status%TYPE;
     BEGIN
-        SELECT db_link_name INTO l_db_link_name FROM targets WHERE name = p_name AND instance_number = p_instance_number AND dbid = p_dbid;
+        SELECT db_link_name, status INTO l_db_link_name, l_status FROM targets WHERE name = p_name AND instance_number = p_instance_number AND dbid = p_dbid;
         
-        change_target_status(p_name,p_instance_number,p_dbid,'DISABLED');
+        IF l_status = 'ENABLED' THEN
+            change_target_status(p_name,p_instance_number,p_dbid,'DISABLED');
+        END IF;
         
         l_sqltext := 'DROP DATABASE LINK ' || l_db_link_name;
         EXECUTE IMMEDIATE l_sqltext;
@@ -302,7 +305,7 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.repo AS
     EXCEPTION
         WHEN OTHERS THEN
             error_message('Error during changing the ASH sampling type of target database ' || p_name || ' in repository: ' || SQLCODE);
-    END change_target_type;        
+    END change_target_type;
 
 
     PROCEDURE error_message (p_message VARCHAR2) IS
@@ -347,7 +350,7 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.repo AS
     EXCEPTION
         WHEN OTHERS THEN
             error_message('Error during generating the advanced view for target database ' || p_name || ': ' || SQLCODE);
-    END generate_advanced_view_target;        
+    END generate_advanced_view_target;
     
 
     PROCEDURE repo_maintenance IS
@@ -386,6 +389,93 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.repo AS
     EXCEPTION
         WHEN OTHERS THEN
             error_message('Error during daily repository database maintenance: ' || SQLCODE);
-    END repo_maintenance;    
+    END repo_maintenance;
+
+
+    PROCEDURE transport_target_export (p_name VARCHAR2, p_dbid NUMBER) IS
+        l_dp_handle               NUMBER;
+        l_exp_name                VARCHAR2(200);
+        l_job_state               VARCHAR2(200);
+        l_link_filter             VARCHAR2(200);
+        l_sql_filter              VARCHAR2(200);
+        l_table_ash_target_filter VARCHAR2(200);
+    BEGIN
+        IF p_name IS NULL AND p_dbid IS NULL THEN
+            l_exp_name := 'YAASHS_EXPORT_ALL_TARGETS';
+            l_link_filter := 'IN (SELECT db_link_name FROM targets)';
+            l_sql_filter := 'WHERE 1 = 1';
+            l_table_ash_target_filter := 'WHERE 1 = 1';
+        ELSE
+            l_exp_name := 'YAASHS_EXPORT_' || p_name || '_' || p_dbid;
+            l_link_filter := 'IN (SELECT db_link_name FROM targets WHERE name = ''' || p_name || ''' AND dbid = ' || p_dbid || ')';
+            l_sql_filter := 'WHERE sql_id IN (SELECT sql_id FROM active_session_history_all WHERE name = ''' || p_name || ''' AND dbid = ' || p_dbid || ')';
+            l_table_ash_target_filter := 'WHERE name = ''' || p_name || ''' AND dbid = ' || p_dbid;
+        END IF;
+
+        l_dp_handle := dbms_datapump.open(operation => 'EXPORT', job_mode => 'SCHEMA', job_name => l_exp_name);
+        dbms_datapump.add_file(handle => l_dp_handle, filename => l_exp_name || '.dmp', directory => 'YAASHS_DIR', reusefile => 1);
+        dbms_datapump.add_file(handle => l_dp_handle, filename => l_exp_name || '.log', directory => 'YAASHS_DIR', filetype => dbms_datapump.ku$_file_type_log_file, reusefile => 1);
+        dbms_datapump.metadata_filter(handle => l_dp_handle, name => 'INCLUDE_PATH_EXPR', value => 'IN (''DB_LINK'',''TABLE'')');
+        dbms_datapump.metadata_filter(handle => l_dp_handle, name => 'NAME_EXPR', value => 'IN (SELECT table_name FROM user_tables WHERE table_name LIKE ''ASH_SAMPLES_DAY_%'' OR table_name = ''TARGETS'' OR table_name = ''SQL'')', object_path => 'TABLE');
+        dbms_datapump.metadata_filter(handle => l_dp_handle, name => 'NAME_EXPR', value => l_link_filter, object_path => 'DB_LINK');
+        dbms_datapump.data_filter(handle => l_dp_handle, name => 'SUBQUERY', value => l_sql_filter, table_name => 'SQL');
+
+        FOR l_user_exp_tables IN (SELECT table_name FROM user_tables WHERE table_name LIKE 'ASH_SAMPLES_DAY_%' OR table_name = 'TARGETS')
+        LOOP
+            dbms_datapump.data_filter(handle => l_dp_handle, name => 'SUBQUERY', value => l_table_ash_target_filter, table_name => l_user_exp_tables.table_name);
+        END LOOP;
+        
+        dbms_datapump.start_job(handle => l_dp_handle);
+        dbms_datapump.wait_for_job(handle => l_dp_handle, job_state => l_job_state);
+        
+        IF l_job_state = 'STOPPED' THEN
+            error_message('Error during exporting the target database ' || p_name || ': ' || l_job_state || ' - check Data Pump logs');
+        END IF;
+    EXCEPTION
+        WHEN OTHERS THEN
+            error_message('Error during exporting the target database ' || p_name || ': ' || SQLCODE);
+            dbms_datapump.detach(handle => l_dp_handle);
+    END transport_target_export;
+
+
+    PROCEDURE transport_target_import (p_name VARCHAR2, p_dbid NUMBER) IS
+        l_dp_handle NUMBER;
+        l_exp_name  VARCHAR2(200);
+        l_imp_name  VARCHAR2(200);
+        l_job_state VARCHAR2(200);
+        l_sqltext   VARCHAR2(4000);
+    BEGIN
+        IF p_name IS NULL AND p_dbid IS NULL THEN
+            l_exp_name := 'YAASHS_EXPORT_ALL_TARGETS';
+            l_imp_name := 'YAASHS_IMPORT_ALL_TARGETS';
+        ELSE
+            l_exp_name := 'YAASHS_EXPORT_' || p_name || '_' || p_dbid;
+            l_imp_name := 'YAASHS_IMPORT_' || p_name || '_' || p_dbid;
+        END IF;
+        
+        l_dp_handle := dbms_datapump.open(operation => 'IMPORT', job_mode => 'SCHEMA', job_name => l_imp_name);
+        dbms_datapump.add_file(handle => l_dp_handle, filename => l_exp_name || '.dmp', directory => 'YAASHS_DIR');
+        dbms_datapump.add_file(handle => l_dp_handle, filename => l_imp_name || '.log', directory => 'YAASHS_DIR', filetype => dbms_datapump.ku$_file_type_log_file, reusefile => 1);
+        dbms_datapump.set_parameter(handle => l_dp_handle, name => 'TABLE_EXISTS_ACTION', value => 'APPEND');
+        dbms_datapump.set_parameter(handle => l_dp_handle, name => 'DATA_OPTIONS', value => dbms_datapump.ku$_dataopt_skip_const_err);
+        dbms_datapump.metadata_remap(handle => l_dp_handle, name => 'REMAP_TABLE', old_value => 'TARGETS', value => 'TARGETS_IMPORT');
+        dbms_datapump.start_job(handle => l_dp_handle);
+        dbms_datapump.wait_for_job(handle => l_dp_handle, job_state => l_job_state);
+        
+        CASE l_job_state
+            WHEN 'COMPLETED' THEN
+                l_sqltext := 'INSERT INTO targets(name,dbid,is_pluggable,is_rac,host_name,listener_port,instance_number,service_name,instance_name,db_link_name,status,sampling_type) ' ||
+                             'SELECT name,dbid,is_pluggable,is_rac,host_name,listener_port,instance_number,service_name,instance_name,db_link_name,''IMPORTED'',sampling_type FROM targets_import';
+                EXECUTE IMMEDIATE l_sqltext;
+                COMMIT;
+                l_sqltext := 'DROP TABLE targets_import PURGE';
+                EXECUTE IMMEDIATE l_sqltext;
+            WHEN 'STOPPED' THEN
+                error_message('Error during importing the target database ' || p_name || ': ' || l_job_state || ' - check Data Pump logs');
+        END CASE;
+    EXCEPTION
+        WHEN OTHERS THEN
+            error_message('Error during importing the target database ' || p_name || ': ' || SQLCODE);
+    END transport_target_import;
 END repo;
 /

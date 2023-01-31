@@ -139,7 +139,7 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ut_yaashs AS
         
         DELETE FROM messages;
         COMMIT;
-    END ut_disable_target;  
+    END ut_disable_target;
 
 
     PROCEDURE ut_enable_target IS
@@ -266,7 +266,10 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ut_yaashs AS
         repo.change_target_type(gc_name,gc_dbid,'ADVANCED');
         SELECT count(*) INTO l_count FROM targets WHERE name = gc_name AND dbid = gc_dbid AND sampling_type = 'ADVANCED';
         ut.expect(l_count,'Target database has wrong sampling type/mode.').to_be_greater_or_equal(1);
-    END ut_change_sampling_type_success;    
+        
+        DELETE FROM messages;
+        COMMIT;
+    END ut_change_sampling_type_success;
 
 
     PROCEDURE ut_advanced_ash_samples_success IS
@@ -280,12 +283,28 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ut_yaashs AS
                                                                        AND in_inmemory_populate IS NOT NULL AND in_inmemory_prepopulate IS NOT NULL AND in_inmemory_repopulate IS NOT NULL AND in_inmemory_trepopulate IS NOT NULL 
                                                                        AND in_tablespace_encryption IS NOT NULL;
         ut.expect(l_count,'No advanced ASH samples were collected.').to_be_greater_or_equal(1);
-    END ut_advanced_ash_samples_success;  
+        
+        DELETE FROM messages;
+        COMMIT;
+    END ut_advanced_ash_samples_success;
+
+
+    PROCEDURE ut_export_target IS
+        l_count NUMBER;
+    BEGIN
+        repo.transport_target_export(gc_name,gc_dbid);
+      
+        SELECT count(*) INTO l_count FROM messages;
+        ut.expect(l_count,'Errors in table messages while exporting a target database.').to_equal(0);  
+        
+        DELETE FROM messages;
+        COMMIT;
+    END ut_export_target;
 
 
     PROCEDURE ut_delete_target_single_instance IS
         l_count NUMBER;
-    BEGIN 
+    BEGIN
         repo.delete_target(gc_name,gc_instance_number,gc_dbid);
         SELECT count(*) INTO l_count FROM targets WHERE name = gc_name AND instance_number = gc_instance_number AND dbid = gc_dbid;
         ut.expect(l_count,'Entry in table targets for target database still exists.').to_equal(0);
@@ -320,6 +339,32 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ut_yaashs AS
 
         DELETE FROM messages;
         COMMIT;        
-    END ut_repo_maintenance;    
+    END ut_repo_maintenance;
+
+    
+    PROCEDURE ut_import_target IS
+        l_count           NUMBER;
+        l_count_samples_b NUMBER;
+        l_count_samples_a NUMBER;
+    BEGIN
+        SELECT count(*) INTO l_count_samples_b FROM active_session_history_daily WHERE name = gc_name AND inst_id = gc_instance_number AND dbid = gc_dbid;
+        
+        repo.transport_target_import(gc_name,gc_dbid);
+      
+        SELECT count(*) INTO l_count FROM messages;
+        ut.expect(l_count,'Errors in table messages while importing a target database.').to_equal(0);  
+        
+        SELECT count(*) INTO l_count FROM targets WHERE name = gc_name AND instance_number = gc_instance_number AND dbid = gc_dbid AND status = 'IMPORTED';
+        ut.expect(l_count,'Entry in table targets for imported target database does not exists.').to_equal(1);  
+
+        SELECT count(*) INTO l_count FROM user_db_links WHERE db_link = gc_db_link_name;
+        ut.expect(l_count,'Database link for imported target database does not exists.').to_equal(1);
+        
+        SELECT count(*) INTO l_count_samples_a FROM active_session_history_daily WHERE name = gc_name AND inst_id = gc_instance_number AND dbid = gc_dbid;
+        ut.expect(l_count_samples_a,'Number of ASH samples for imported target database has not increased.').to_be_greater_than(l_count_samples_b);
+        
+        DELETE FROM messages;
+        COMMIT;
+    END ut_import_target;
 END ut_yaashs;
 /

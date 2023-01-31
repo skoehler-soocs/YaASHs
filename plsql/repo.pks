@@ -37,5 +37,11 @@ CREATE OR REPLACE PACKAGE yaashsr.repo AS
     
     -- Repository database maintenance procedure that is scheduled daily at 00:00:01 (yaashs_repo_maintenance) and renames objects, cleans up old ASH/SQL samples and (error) messages  
     PROCEDURE repo_maintenance;
+
+    -- Exports all target databases or a particular target database (including all corresponding ASH and SQL ID/text samples) from the repository database with Data Pump
+    PROCEDURE transport_target_export (p_name VARCHAR2, p_dbid NUMBER); 
+
+    -- Imports all target databases or a particular target database (with status IMPORTED) into the repository database with Data Pump
+    PROCEDURE transport_target_import (p_name VARCHAR2, p_dbid NUMBER); 
 END repo;
 /

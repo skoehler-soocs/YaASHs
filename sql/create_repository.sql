@@ -11,7 +11,8 @@ SET VERIFY OFF
 prompt Database user yaashsr will be dropped (if it already exists) and created
 accept OK_PROMPT prompt "Press any key to continue ..."
 accept YAASHS_PASS default yaashsr prompt "Please enter the yaashsr user password (default yaashsr): "
-accept YAASHS_TBS  default users prompt "Please enter the default tablespace for user yaashsr (default users): "
+accept YAASHS_TBS default users prompt "Please enter the default tablespace for user yaashsr (default users): "
+accept YAASHS_DIR default /tmp prompt "Please enter the directory for target database exports and imports (default /tmp): "
 
 ---------------------------------------------------------------------------------------------
 -- (Re-)Create user
@@ -26,6 +27,7 @@ ALTER USER yaashsr QUOTA UNLIMITED ON &yaashs_tbs;
 GRANT CREATE DATABASE LINK TO yaashsr;
 GRANT CREATE JOB TO yaashsr;
 GRANT CREATE SESSION TO yaashsr;
+GRANT CREATE TABLE TO yaashsr;
 GRANT CREATE VIEW TO yaashsr;
 GRANT EXECUTE ON dbms_lock TO yaashsr;
 GRANT RESOURCE TO yaashsr;
@@ -78,7 +80,7 @@ CREATE TABLE yaashsr.targets (
     sampling_type   VARCHAR(8) NOT NULL,
     constraint      check_is_pluggable CHECK (is_pluggable IN ('NONCDB','CDB','PDB')),
     constraint      check_is_rac CHECK (is_rac IN ('YES','NO')),
-    constraint      check_status CHECK (status IN ('ADDED','DESCHEDULED','DISABLED','ENABLED')),
+    constraint      check_status CHECK (status IN ('ADDED','DESCHEDULED','DISABLED','ENABLED','IMPORTED')),
     constraint      check_sampling_type CHECK (sampling_type IN ('STANDARD','ADVANCED'))
 );
 
@@ -1441,6 +1443,12 @@ END;
 -- Sequences
 ---------------------------------------------------------------------------------------------
 CREATE SEQUENCE yaashsr.sample_id START WITH 1 INCREMENT BY 1 MAXVALUE 9999999999999999999999999999 CYCLE CACHE 900;
+
+---------------------------------------------------------------------------------------------
+-- Directories
+---------------------------------------------------------------------------------------------
+CREATE OR REPLACE DIRECTORY yaashs_dir AS '&YAASHS_DIR';
+GRANT READ,WRITE on DIRECTORY yaashs_dir to yaashsr;
 
 ---------------------------------------------------------------------------------------------
 -- Data (Defaults)
