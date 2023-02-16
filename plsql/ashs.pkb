@@ -126,8 +126,9 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ashs AS
     BEGIN
         SELECT db_link_name INTO l_db_link_name FROM targets WHERE name = p_name AND instance_number = p_instance_number AND dbid = p_dbid;
 
+        -- SQL hint is necessary to guarantee stable performance as some fixed objects use cardinality defaults (e.g. check MOS ID #1637294.1) which can result in an inadequate execution plan
         l_sqltext := 'MERGE INTO sql reposql USING ' ||
-                     '(SELECT DISTINCT vsql.sql_id, vsql.sql_text FROM v$sql@' || l_db_link_name || ' vsql, active_session_history_daily ashd ' || 
+                     '(SELECT /*+ LEADING("ASHD") USE_HASH("VSQL") */ DISTINCT vsql.sql_id, vsql.sql_text FROM v$sqlarea@' || l_db_link_name || ' vsql, active_session_history_daily ashd ' || 
                      'WHERE ashd.sql_id = vsql.sql_id AND ashd.sample_time BETWEEN :val1 AND :val2 AND ashd.name = :val3 AND ashd.inst_id = :val4 AND ashd.dbid = :val5) ' ||
                      'rsql ON (rsql.sql_id = reposql.sql_id) ' ||
                      'WHEN NOT MATCHED THEN INSERT (reposql.sql_id, reposql.sql_text) VALUES (rsql.sql_id, rsql.sql_text)';

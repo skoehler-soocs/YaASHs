@@ -23,7 +23,7 @@ CREATE OR REPLACE PACKAGE yaashsr.ashs AS
     -- Samples data from v$session on the target database, copies it via database link and stores it into repository database
     PROCEDURE sample_ash (p_name VARCHAR2, p_instance_number NUMBER DEFAULT 1, p_dbid NUMBER);
     
-    -- Samples data from v$sql on the target database for specific SQL IDs in a given time period (start and end time of procedure sample_ash), copies it via database link and stores it into repository database
+    -- Samples data from v$sqlarea on the target database for specific SQL IDs in a given time period (start and end time of procedure sample_ash), copies it via database link and stores it into repository database
     PROCEDURE sample_sqltext (p_name VARCHAR2, p_instance_number NUMBER DEFAULT 1, p_dbid NUMBER, p_sample_start DATE, p_sample_end DATE);
 END ashs;
 /
