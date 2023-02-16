@@ -135,7 +135,7 @@ SQL> exec yaashsr.repo.generate_advanced_view_target(  p_name => '<DATABASE_NAME
 -- Execute the following procedure after the view (and its grant) has been created in target database
 SQL> exec yaashsr.repo.change_target_type(  p_name => '<DATABASE_NAME>', 
                                             p_dbid => <DBID>,
-                                            p_sampling_type = 'ADVANCED');
+                                            p_sampling_type => 'ADVANCED');
 ```
 
 #### Disabling advanced ASH sampling mode / Reverting to standard ASH sampling mode
@@ -143,7 +143,7 @@ SQL> exec yaashsr.repo.change_target_type(  p_name => '<DATABASE_NAME>',
 -- Parameter values can be obtained from table yaashsr.targets if unknown
 SQL> exec yaashsr.repo.change_target_type(  p_name => '<DATABASE_NAME>', 
                                             p_dbid => <DBID>,
-                                            p_sampling_type = 'STANDARD');
+                                            p_sampling_type => 'STANDARD');
 ```
 
 
