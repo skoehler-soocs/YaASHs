@@ -7,7 +7,7 @@ This project was inspired by [OraSASH](http://pioro.github.io/orasash/) but is a
 * No object installation needed in Oracle target database by default (standard mode)
 * ASH sampling with additional columns if you are allowed / it is possible to create one view in Oracle target database (advanced mode)
 * Tools like [ashtop.sql](https://github.com/tanelpoder/tpt-oracle/blob/master/ash/ashtop.sql) or [ash_wait_chains.sql](https://github.com/tanelpoder/tpt-oracle/blob/master/ash/ash_wait_chains.sql) by Tanel Poder should work out of the box because of 100% ASH compatibility
-* No replacement for STATSPACK in the target database as YaASHs focuses on sampling V$SESSION (and V$SQL) for ASH only and should be considered as an addition/extension to STATSPACK (same like AWR reports vs. ASH samples)
+* No replacement for STATSPACK in the target database as YaASHs focuses on sampling V$SESSION (and V$SQLAREA) for ASH only and should be considered as an addition/extension to STATSPACK (same like AWR reports vs. ASH samples)
 
 ![YaASHs overview](./pics/Overview.jpg)
 
