@@ -59,23 +59,28 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ashs AS
 
     
     PROCEDURE sample_ash (p_name VARCHAR2, p_instance_number NUMBER, p_dbid NUMBER) IS
-        l_col_ashs_a    col_mapping.col_ashs%TYPE DEFAULT NULL;
-        l_col_sess_a    col_mapping.col_sess%TYPE DEFAULT NULL;
-        l_col_ashs_s    col_mapping.col_ashs%TYPE;
-        l_col_sess_s    col_mapping.col_sess%TYPE;
-        l_date_start    DATE;
-        l_date_end      DATE;
-        l_dbid          targets.dbid%TYPE;
-        l_db_link_name  targets.db_link_name%TYPE;
-        l_sample_idle   configuration.value%TYPE;
-        l_sampledura_s  configuration.value%TYPE;
-        l_samplefreq_s  configuration.value%TYPE;
-        l_sampleid      NUMBER;
-        l_sampling_type targets.sampling_type%TYPE;
-        l_sqltext       VARCHAR2(4000);
-        l_sqltext_where VARCHAR2(100) DEFAULT '1 = 1';
-        l_username      user_db_links.username%TYPE;
-        l_version       col_mapping.version%TYPE;          
+        l_col_ashs_a         col_mapping.col_ashs%TYPE DEFAULT NULL;
+        l_col_sess_a         col_mapping.col_sess%TYPE DEFAULT NULL;
+        l_col_ashs_s         col_mapping.col_ashs%TYPE;
+        l_col_sess_s         col_mapping.col_sess%TYPE;
+        l_count_slow_sample  NUMBER DEFAULT 0;
+        l_date_start         DATE;
+        l_date_end           DATE;
+        l_dbid               targets.dbid%TYPE;
+        l_dyn_samplefreq_s   NUMBER;
+        l_db_link_name       targets.db_link_name%TYPE;
+        l_sample_idle        configuration.value%TYPE;
+        l_sampledura_s       configuration.value%TYPE;
+        l_samplefreq_s       configuration.value%TYPE;
+        l_sampleid           NUMBER;
+        l_sampling_type      targets.sampling_type%TYPE;
+        l_sqltext            VARCHAR2(4000);
+        l_sqltext_where      VARCHAR2(100) DEFAULT '1 = 1';
+        l_time_after_sample  NUMBER; 
+        l_time_before_sample NUMBER;
+        l_time_durat_sample  NUMBER;
+        l_username           user_db_links.username%TYPE;
+        l_version            col_mapping.version%TYPE;
     BEGIN
         l_date_start := SYSDATE;
         l_version := get_db_version(p_name,p_instance_number,p_dbid);
@@ -102,16 +107,32 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ashs AS
                   
         FOR counter in 1 .. l_sampledura_s
         LOOP
+            l_time_before_sample := dbms_utility.get_time();
+            
             SELECT sample_id.nextval INTO l_sampleid FROM dual;
-                
             EXECUTE IMMEDIATE l_sqltext USING p_name, l_dbid, p_instance_number, l_sampleid, SYSDATE, l_username;
             COMMIT;
-                
-            dbms_session.sleep(l_samplefreq_s);
+            
+            l_time_after_sample := dbms_utility.get_time();
+            l_time_durat_sample := (l_time_after_sample - l_time_before_sample) / 100; 
+            
+            IF l_time_durat_sample >= l_samplefreq_s THEN
+                l_count_slow_sample := l_count_slow_sample + 1;
+                l_dyn_samplefreq_s := l_samplefreq_s;
+            ELSE
+                l_dyn_samplefreq_s := l_samplefreq_s - l_time_durat_sample;
+            END IF;
+            
+            -- Sleeping frequency is dynamically calculated for each ASH sample to keep the scheduling time window of SAMPLEFREQ_SEC x SAMPLEDURA_SEC (USER_SCHEDULER_JOB_RUN_DETAILS.RUN_DURATION) as remote query itself takes several milliseconds depending on data volume
+            dbms_session.sleep(l_dyn_samplefreq_s);
         END LOOP;
         l_date_end := SYSDATE;
             
         sample_sqltext(p_name,p_instance_number,p_dbid,l_date_start,l_date_end);
+        
+        IF l_count_slow_sample > 0 THEN
+            repo.error_message(l_count_slow_sample || ' ASH samples took longer than ' || l_samplefreq_s || ' during ASH sampling for database ' || p_name);
+        END IF;
      EXCEPTION
         WHEN NO_DATA_FOUND THEN
             repo.error_message('Error during ASH sampling for database ' || p_name || ' - target database version ' || l_version || ' has no (complete) column mapping in table col_mapping');
