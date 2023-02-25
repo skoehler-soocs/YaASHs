@@ -119,7 +119,7 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ut_yaashs AS
         l_count NUMBER;
     BEGIN
         repo.add_target(gc_name,gc_host_name,gc_listener_port,gc_service_name,gc_instance_number,gc_instance_name,gc_username,gc_password);
-        SELECT count(*) INTO l_count FROM messages WHERE message = 'Error during adding database ' || gc_name || ' to repository: -1';
+        SELECT count(*) INTO l_count FROM messages WHERE name = gc_name AND instance_number = gc_instance_number AND message = 'Error during adding database to repository: -1';
         ut.expect(l_count,'Failure was not detected during adding an already existing target database.').to_equal(1);
         
         DELETE FROM messages;
@@ -176,13 +176,13 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ut_yaashs AS
         UPDATE targets SET dbid=dbid+1 WHERE name = gc_name AND instance_number = gc_instance_number AND dbid = gc_dbid;
         repo.check_target(gc_name,gc_instance_number,gc_dbid+1);
         
-        SELECT count(*) INTO l_count FROM messages WHERE message like 'Found inconsistency between stored meta-information (PDB)%' || gc_name || '%';
+        SELECT count(*) INTO l_count FROM messages WHERE name = gc_name AND dbid = gc_dbid+1 AND instance_number = gc_instance_number AND message like 'Found inconsistency between stored meta-information (PDB)%';
         ut.expect(l_count,'Inconsistency check for Non-CDB/CDB/PDB type is not working.').to_equal(1);
         
-        SELECT count(*) INTO l_count FROM messages WHERE message like 'Found inconsistency between stored meta-information (database id)%' || gc_name || '%';
+        SELECT count(*) INTO l_count FROM messages WHERE name = gc_name AND dbid = gc_dbid+1 AND instance_number = gc_instance_number AND message like 'Found inconsistency between stored meta-information (database id)%';
         ut.expect(l_count,'Inconsistency check for database id is not working.').to_equal(1);
         
-        SELECT count(*) INTO l_count FROM messages WHERE message like 'Found inconsistency between stored meta-information (RAC)%' || gc_name || '%';
+        SELECT count(*) INTO l_count FROM messages WHERE name = gc_name AND dbid = gc_dbid+1 AND instance_number = gc_instance_number AND message like 'Found inconsistency between stored meta-information (RAC)%';
         ut.expect(l_count,'Inconsistency check for RAC type is not working.').to_equal(1);
         
         ROLLBACK;
@@ -218,7 +218,7 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ut_yaashs AS
     
         dbms_session.sleep(5);
         
-        SELECT count(*) INTO l_count FROM messages WHERE message like '%column mapping in table col_mapping%'; 
+        SELECT count(*) INTO l_count FROM messages WHERE name = gc_name AND dbid = gc_dbid AND instance_number = gc_instance_number AND message like '%column mapping in table col_mapping%'; 
         ut.expect(l_count,'Missing column mapping in table col_mapping was not identified.').to_equal(1);
         
         INSERT INTO col_mapping(version,type,col_sess,col_ashs) VALUES (l_col_mapping_row.version,l_col_mapping_row.type,l_col_mapping_row.col_sess,l_col_mapping_row.col_ashs);
@@ -232,11 +232,11 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ut_yaashs AS
         l_count           NUMBER;
     BEGIN
         repo.change_target_type(gc_name,gc_dbid,'NOTVALIDVALUE');
-        SELECT count(*) INTO l_count FROM messages WHERE message like '%invalid option NOTVALIDVALUE%'; 
+        SELECT count(*) INTO l_count FROM messages WHERE name = gc_name AND dbid = gc_dbid AND instance_number IS NULL AND message like '%invalid type NOTVALIDVALUE%'; 
         ut.expect(l_count,'Invalid option for parameter p_sampling_type was not identified.').to_equal(1);
         
         repo.change_target_type(gc_name,gc_dbid,'ADVANCED');
-        SELECT count(*) INTO l_count FROM messages WHERE message like '%view SYS.YAASHS_V$SESSION is not available in target database%'; 
+        SELECT count(*) INTO l_count FROM messages WHERE name = gc_name AND dbid = gc_dbid AND instance_number IS NULL AND message like '%view SYS.YAASHS_V$SESSION is not available in target database'; 
         ut.expect(l_count,'Missing view SYS.YAASHS_V$SESSION in target database was not identified.').to_equal(1); 
         
         -- Unit tester needs to manually execute the following procedure and its instructions within 100 seconds - otherwise all following unit tests will not be valid
@@ -248,7 +248,7 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ut_yaashs AS
         COMMIT;
          
         repo.change_target_type(gc_name,gc_dbid,'ADVANCED');
-        SELECT count(*) INTO l_count FROM messages WHERE message like '%no column mapping available for Oracle version%'; 
+        SELECT count(*) INTO l_count FROM messages WHERE name = gc_name AND dbid = gc_dbid AND instance_number IS NULL AND message like '%no column mapping available for Oracle version%'; 
         ut.expect(l_count,'Missing advanced view mapping in table advanced_view_def was not identified.').to_equal(1);
         
         INSERT INTO col_mapping(version,type,col_sess,col_ashs) VALUES (l_col_mapping_row.version,l_col_mapping_row.type,l_col_mapping_row.col_sess,l_col_mapping_row.col_ashs);
@@ -294,7 +294,7 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ut_yaashs AS
     BEGIN
         repo.transport_target_export(gc_name,gc_dbid);
       
-        SELECT count(*) INTO l_count FROM messages;
+        SELECT count(*) INTO l_count FROM messages WHERE name = gc_name AND dbid = gc_dbid AND instance_number IS NULL;
         ut.expect(l_count,'Errors in table messages while exporting a target database.').to_equal(0);  
         
         DELETE FROM messages;
@@ -315,7 +315,7 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ut_yaashs AS
         SELECT count(*) INTO l_count FROM user_scheduler_jobs WHERE job_name = gc_ashs_job_name AND enabled = 'TRUE'; 
         ut.expect(l_count,'ASH sampling job for target database is still defined.').to_equal(0);  
         
-        SELECT count(*) INTO l_count FROM messages;
+        SELECT count(*) INTO l_count FROM messages WHERE name = gc_name AND dbid = gc_dbid AND instance_number = gc_instance_number;
         ut.expect(l_count,'Errors in table messages while deleting a target database.').to_equal(0);
         
         DELETE FROM messages;
@@ -351,7 +351,7 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ut_yaashs AS
         
         repo.transport_target_import(gc_name,gc_dbid);
       
-        SELECT count(*) INTO l_count FROM messages;
+        SELECT count(*) INTO l_count FROM messages WHERE name = gc_name AND dbid = gc_dbid AND instance_number IS NULL;
         ut.expect(l_count,'Errors in table messages while importing a target database.').to_equal(0);  
         
         SELECT count(*) INTO l_count FROM targets WHERE name = gc_name AND instance_number = gc_instance_number AND dbid = gc_dbid AND status = 'IMPORTED';

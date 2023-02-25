@@ -60,9 +60,12 @@ CREATE TABLE yaashsr.configuration (
 );
 
 CREATE TABLE yaashsr.messages (
-    time    DATE NOT NULL,
-    stack   VARCHAR2(4000) NOT NULL,
-    message VARCHAR2(4000) NOT NULL
+    time            DATE NOT NULL,
+    name            VARCHAR2(128),
+    dbid            NUMBER,
+    instance_number NUMBER,
+    stack           VARCHAR2(4000) NOT NULL,
+    message         VARCHAR2(4000) NOT NULL
 );
 
 CREATE TABLE yaashsr.targets (

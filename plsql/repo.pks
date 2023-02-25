@@ -30,7 +30,7 @@ CREATE OR REPLACE PACKAGE yaashsr.repo AS
     PROCEDURE change_target_type (p_name VARCHAR2, p_dbid NUMBER, p_sampling_type VARCHAR2); 
     
     -- General (error) logging procedure that stores the call stack and error message and is used by all other functions/procedures
-    PROCEDURE error_message (p_message VARCHAR2);
+    PROCEDURE error_message (p_name VARCHAR2, p_instance_number NUMBER DEFAULT 1, p_dbid NUMBER, p_message VARCHAR2);
 
     -- Generates the commands to create the advanced view SYS.YAASHS_V$SESSION for a particular target database
     PROCEDURE generate_advanced_view_target (p_name VARCHAR2, p_dbid NUMBER); 

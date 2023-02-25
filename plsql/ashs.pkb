@@ -17,7 +17,7 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ashs AS
         END IF;                 
      EXCEPTION
         WHEN OTHERS THEN
-            repo.error_message('Error during dropping the ASH sampling job for database ' || p_name || ': ' || SQLCODE);
+            repo.error_message(p_name,p_instance_number,p_dbid,'Error during dropping the ASH sampling job: ' || SQLCODE);
     END deschedule_ash_sampling;
 
 
@@ -32,7 +32,7 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ashs AS
         RETURN l_version;
     EXCEPTION
         WHEN OTHERS THEN
-            repo.error_message('Error during determining Oracle version of target database ' || p_name || ': ' || SQLCODE);
+            repo.error_message(p_name,p_instance_number,p_dbid,'Error during determining Oracle version: ' || SQLCODE);
     END get_db_version;
 
 
@@ -54,7 +54,7 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ashs AS
         END IF;                 
      EXCEPTION
         WHEN OTHERS THEN
-            repo.error_message('Error during creating the ASH sampling job for database ' || p_name || ': ' || SQLCODE);
+            repo.error_message(p_name,p_instance_number,p_dbid,'Error during creating the ASH sampling job: ' || SQLCODE);
     END schedule_ash_sampling;
 
     
@@ -131,13 +131,13 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ashs AS
         sample_sqltext(p_name,p_instance_number,p_dbid,l_date_start,l_date_end);
         
         IF l_count_slow_sample > 0 THEN
-            repo.error_message(l_count_slow_sample || ' ASH samples took longer than ' || l_samplefreq_s || ' during ASH sampling for database ' || p_name);
+            repo.error_message(p_name,p_instance_number,p_dbid,l_count_slow_sample || ' ASH samples took longer than ' || l_samplefreq_s || ' second(s) during ASH sampling');
         END IF;
      EXCEPTION
         WHEN NO_DATA_FOUND THEN
-            repo.error_message('Error during ASH sampling for database ' || p_name || ' - target database version ' || l_version || ' has no (complete) column mapping in table col_mapping');
+            repo.error_message(p_name,p_instance_number,p_dbid,'Error during ASH sampling - target database version ' || l_version || ' has no (complete) column mapping in table col_mapping');
         WHEN OTHERS THEN
-            repo.error_message('Error during ASH sampling for database ' || p_name || ': ' || SQLCODE);
+            repo.error_message(p_name,p_instance_number,p_dbid,'Error during ASH sampling for database: ' || SQLCODE);
     END sample_ash;
 
 
@@ -157,7 +157,7 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.ashs AS
         COMMIT;
      EXCEPTION
         WHEN OTHERS THEN
-            repo.error_message('Error during sampling SQL IDs/text for database ' || p_name || ': ' || SQLCODE);        
+            repo.error_message(p_name,p_instance_number,p_dbid,'Error during sampling SQL IDs/text: ' || SQLCODE);        
     END sample_sqltext;
 END ashs;
 /

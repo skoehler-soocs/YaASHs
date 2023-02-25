@@ -86,9 +86,9 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.repo AS
         change_target_status(p_name,p_instance_number,l_dbid,'ENABLED');
     EXCEPTION
         WHEN DUP_VAL_ON_INDEX THEN
-            error_message('Error during adding database ' || p_name || ' to repository: ' || SQLCODE);
+            error_message(p_name,p_instance_number,NULL,'Error during adding database to repository: ' || SQLCODE);
         WHEN OTHERS THEN
-            error_message('Error during adding database ' || p_name || ' to repository: ' || SQLCODE);
+            error_message(p_name,p_instance_number,NULL,'Error during adding database to repository: ' || SQLCODE);
             l_sqltext := 'DROP DATABASE LINK ' || l_db_link_name;
             EXECUTE IMMEDIATE l_sqltext;
     END add_target;
@@ -101,7 +101,7 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.repo AS
     BEGIN
         SELECT count(*) INTO l_count FROM configuration WHERE name = upper(p_name);
         IF l_count = 0 THEN
-            error_message('Error during changing configuration in repository database - invalid parameter ' || p_name);
+            error_message(NULL,NULL,NULL,'Error during changing configuration in repository database - invalid parameter ' || p_name);
         ELSE
             CASE upper(p_name)
                 WHEN 'RETENTION_DAYS' THEN
@@ -138,9 +138,9 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.repo AS
             
             CASE l_valid_v
                 WHEN 0 THEN
-                    error_message('Error during changing configuration in repository database - invalid value ' || p_value || ' for parameter ' || p_name);
+                    error_message(NULL,NULL,NULL,'Error during changing configuration in repository database - invalid value ' || p_value || ' for parameter ' || p_name);
                 WHEN 1 THEN
-                    error_message('Error during changing configuration in repository database - invalid value ' || p_value || ' for parameter ' || p_name || '. SAMPLEFREQ_SEC x SAMPLEDURA_SEC needs to be less than 3600 seconds but also a full minute value');
+                    error_message(NULL,NULL,NULL,'Error during changing configuration in repository database - invalid value ' || p_value || ' for parameter ' || p_name || '. SAMPLEFREQ_SEC x SAMPLEDURA_SEC needs to be less than 3600 seconds but also a full minute value');
                 WHEN 2 THEN
                     UPDATE configuration SET value = upper(p_value) WHERE name = upper(p_name);
                     COMMIT;
@@ -172,7 +172,7 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.repo AS
         END IF;
         
         IF l_is_pdb != l_targets_row.is_pluggable THEN
-            error_message('Found inconsistency between stored meta-information (PDB) in repository and current status for database ' || l_targets_row.name || ': ' || l_is_pdb || ' vs. ' || l_targets_row.is_pluggable);
+            error_message(p_name,p_instance_number,p_dbid,'Found inconsistency between stored meta-information (PDB) in repository and current status for database: ' || l_is_pdb || ' vs. ' || l_targets_row.is_pluggable);
         END IF;
         
         IF l_is_pdb = 'PDB' THEN
@@ -183,25 +183,25 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.repo AS
         EXECUTE IMMEDIATE l_sqltext INTO l_dbid; 
         
         IF l_dbid != l_targets_row.dbid THEN
-            error_message('Found inconsistency between stored meta-information (database id) in repository and current status for database ' || l_targets_row.name || ': ' || l_dbid || ' vs. ' || l_targets_row.dbid);
+            error_message(p_name,p_instance_number,p_dbid,'Found inconsistency between stored meta-information (database id) in repository and current status for database: ' || l_dbid || ' vs. ' || l_targets_row.dbid);
         END IF;
         
         l_sqltext := q'[SELECT decode(VALUE,'FALSE','NO','YES') FROM v$parameter@]' || l_targets_row.db_link_name || q'[ WHERE name = 'cluster_database']';
         EXECUTE IMMEDIATE l_sqltext INTO l_is_rac;
         
         IF l_is_rac != l_targets_row.is_rac THEN
-            error_message('Found inconsistency between stored meta-information (RAC) in repository and current status for database ' || l_targets_row.name || ': ' || l_is_rac || ' vs. ' || l_targets_row.is_rac);
+            error_message(p_name,p_instance_number,p_dbid,'Found inconsistency between stored meta-information (RAC) in repository and current status for database: ' || l_is_rac || ' vs. ' || l_targets_row.is_rac);
         END IF;        
     
         l_sqltext := q'[SELECT instance_number FROM v$instance@]' || l_targets_row.db_link_name;
         EXECUTE IMMEDIATE l_sqltext INTO l_instance_n;
         
         IF l_instance_n != l_targets_row.instance_number THEN
-            error_message('Found inconsistency between stored meta-information (instance number) in repository and current status for database ' || l_targets_row.name || ': ' || l_instance_n || ' vs. ' || l_targets_row.instance_number);
+            error_message(p_name,p_instance_number,p_dbid,'Found inconsistency between stored meta-information (instance number) in repository and current status for database: ' || l_instance_n || ' vs. ' || l_targets_row.instance_number);
         END IF;
     EXCEPTION
         WHEN OTHERS THEN
-            error_message('Error during checking stored meta-information of target database ' || p_name || ': ' || SQLCODE);
+            error_message(p_name,p_instance_number,p_dbid,'Error during checking stored meta-information of target database: ' || SQLCODE);
     END check_target;
 
 
@@ -223,7 +223,7 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.repo AS
         COMMIT;
     EXCEPTION
         WHEN OTHERS THEN
-            error_message('Error during deleting database ' || p_name || ' from repository: ' || SQLCODE);
+            error_message(p_name,p_instance_number,p_dbid,'Error during deleting database from repository: ' || SQLCODE);
     END delete_target;
     
     
@@ -244,11 +244,11 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.repo AS
                 ashs.deschedule_ash_sampling(p_name,p_instance_number,p_dbid);
                 COMMIT;
             ELSE
-                error_message('Error during changing the state of target database ' || p_name || ' - invalid option ' || p_status);
+                error_message(p_name,p_instance_number,p_dbid,'Error during changing the status of target database - invalid option ' || p_status);
         END CASE;
     EXCEPTION
         WHEN OTHERS THEN
-            error_message('Error during changing the state of target database ' || p_name || ' in repository: ' || SQLCODE);
+            error_message(p_name,p_instance_number,p_dbid,'Error during changing the status of target database in repository: ' || SQLCODE);
     END change_target_status;
 
 
@@ -274,10 +274,10 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.repo AS
                 IF l_count > 0 THEN
                     l_valid_v := 1;
                 ELSE
-                    error_message('Error during changing the ASH sampling type of target database ' || p_name || ' - view SYS.YAASHS_V$SESSION is not available in target database');
+                    error_message(p_name,NULL,p_dbid,'Error during changing the ASH sampling type of target database - view SYS.YAASHS_V$SESSION is not available in target database');
                 END IF;
             ELSE
-                error_message('Error during changing the ASH sampling type of target database ' || p_name || ' - invalid option ' || p_sampling_type);
+                error_message(p_name,NULL,p_dbid,'Error during changing the ASH sampling type of target database - invalid type ' || p_sampling_type);
         END CASE;
         
         IF l_valid_v = 1 THEN
@@ -299,20 +299,20 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.repo AS
                     change_target_status(l_all_targets.name,l_all_targets.instance_number,l_all_targets.dbid,'ENABLED');
                 END LOOP;                
             ELSE
-                error_message('Error during changing the ASH sampling type of target database ' || p_name || ' - no column mapping available for Oracle version ' || l_version || ' and sampling type ' || p_sampling_type);
+                error_message(p_name,NULL,p_dbid,'Error during changing the ASH sampling type of target database - no column mapping available for Oracle version ' || l_version || ' and sampling type ' || p_sampling_type);
             END IF;
         END IF;
     EXCEPTION
         WHEN OTHERS THEN
-            error_message('Error during changing the ASH sampling type of target database ' || p_name || ' in repository: ' || SQLCODE);
+            error_message(p_name,NULL,p_dbid,'Error during changing the ASH sampling type of target database in repository: ' || SQLCODE);
     END change_target_type;
 
 
-    PROCEDURE error_message (p_message VARCHAR2) IS
+    PROCEDURE error_message (p_name VARCHAR2, p_instance_number NUMBER, p_dbid NUMBER, p_message VARCHAR2) IS
         PRAGMA AUTONOMOUS_TRANSACTION;
         l_callstack messages.stack%TYPE DEFAULT dbms_utility.format_call_stack;
     BEGIN
-        INSERT INTO messages(time,stack,message) VALUES (SYSDATE,l_callstack,p_message);
+        INSERT INTO messages(time,name,dbid,instance_number,stack,message) VALUES (SYSDATE,p_name,p_dbid,p_instance_number,l_callstack,p_message);
         COMMIT;
     END error_message;
 
@@ -345,11 +345,11 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.repo AS
             dbms_output.put_line('quit;');
             dbms_output.put_line('********************************************************************************************************************************************');
         ELSE
-            error_message('Error during generating the advanced view for target database ' || p_name || ': Database version ' ||  l_version || ' is not supported for advanced ASH sampling');
+            error_message(p_name,NULL,p_dbid,'Error during generating the advanced view for target database - database version ' ||  l_version || ' is not supported for advanced ASH sampling');
         END IF;
     EXCEPTION
         WHEN OTHERS THEN
-            error_message('Error during generating the advanced view for target database ' || p_name || ': ' || SQLCODE);
+            error_message(p_name,NULL,p_dbid,'Error during generating the advanced view for target database: ' || SQLCODE);
     END generate_advanced_view_target;
     
 
@@ -388,7 +388,7 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.repo AS
         COMMIT;
     EXCEPTION
         WHEN OTHERS THEN
-            error_message('Error during daily repository database maintenance: ' || SQLCODE);
+            error_message(NULL,NULL,NULL,'Error during daily repository database maintenance: ' || SQLCODE);
     END repo_maintenance;
 
 
@@ -429,11 +429,11 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.repo AS
         dbms_datapump.wait_for_job(handle => l_dp_handle, job_state => l_job_state);
         
         IF l_job_state = 'STOPPED' THEN
-            error_message('Error during exporting the target database ' || p_name || ': ' || l_job_state || ' - check Data Pump logs');
+            error_message(p_name,NULL,p_dbid,'Error during exporting the target database: ' || l_job_state || ' - check Data Pump logs');
         END IF;
     EXCEPTION
         WHEN OTHERS THEN
-            error_message('Error during exporting the target database ' || p_name || ': ' || SQLCODE);
+            error_message(p_name,NULL,p_dbid,'Error during exporting the target database: ' || SQLCODE);
             dbms_datapump.detach(handle => l_dp_handle);
     END transport_target_export;
 
@@ -471,11 +471,11 @@ CREATE OR REPLACE PACKAGE BODY yaashsr.repo AS
                 l_sqltext := 'DROP TABLE targets_import PURGE';
                 EXECUTE IMMEDIATE l_sqltext;
             WHEN 'STOPPED' THEN
-                error_message('Error during importing the target database ' || p_name || ': ' || l_job_state || ' - check Data Pump logs');
+                error_message(p_name,NULL,p_dbid,'Error during importing the target database: ' || l_job_state || ' - check Data Pump logs');
         END CASE;
     EXCEPTION
         WHEN OTHERS THEN
-            error_message('Error during importing the target database ' || p_name || ': ' || SQLCODE);
+            error_message(p_name,NULL,p_dbid,'Error during importing the target database: ' || SQLCODE);
     END transport_target_import;
 END repo;
 /
