@@ -29,7 +29,6 @@ GRANT CREATE JOB TO yaashsr;
 GRANT CREATE SESSION TO yaashsr;
 GRANT CREATE TABLE TO yaashsr;
 GRANT CREATE VIEW TO yaashsr;
-GRANT EXECUTE ON dbms_lock TO yaashsr;
 GRANT RESOURCE TO yaashsr;
 GRANT SELECT ON gv_$session TO yaashsr;
 GRANT SELECT ON v_$event_name TO yaashsr;
